@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Google Charts Demo</title>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { font-size: 20px; margin-bottom: 10px; }
+    .chart-row { display: flex; flex-wrap: wrap; gap: 20px; }
+    .chart-container { flex: 1 1 320px; min-width: 300px; }
+    .chart-box { width: 100%; height: 380px; border: 1px solid #e0e0e0; padding: 8px; box-sizing: border-box; border-radius: 6px; background: #fafafa; }
+  </style>
+  <script type="text/javascript">
+    google.charts.load('current', { packages: ['corechart', 'bar'] });
+    google.charts.setOnLoadCallback(drawAll);
+
+    function drawAll() {
+      drawLineChart();
+      drawPieChart();
+      drawColumnChart();
+    }
+
+    function drawLineChart() {
+      var data = google.visualization.arrayToDataTable([
+        ['Year', 'Sales', 'Expenses'],
+        ['2018',  800,      200],
+        ['2019', 1000,      400],
+        ['2020', 1170,      460],
+        ['2021', 660,      1120],
+        ['2022', 1030,      540]
+      ]);
+
+      var options = {
+        title: 'Company Performance (Sales vs Expenses)',
+        hAxis: { title: 'Year' },
+        vAxis: { title: 'Amount' },
+        curveType: 'function',
+        legend: { position: 'bottom' },
+        chartArea: { left: 60, top: 40, width: '80%', height: '70%' }
+      };
+
+      var chart = new google.visualization.LineChart(document.getElementById('line_chart'));
+      chart.draw(data, options);
+    }
+
+    function drawPieChart() {
+      var data = google.visualization.arrayToDataTable([
+        ['Activity', 'Hours per Day'],
+        ['Work',     8],
+        ['Eat',      2],
+        ['Commute',  2],
+        ['Watch TV', 3],
+        ['Sleep',    9]
+      ]);
+
+      var options = {
+        title: 'Daily Activities',
+        pieHole: 0.2,
+        chartArea: { left: 20, top: 40, width: '90%', height: '75%' },
+        legend: { position: 'right', alignment: 'center' }
+      };
+
+      var chart = new google.visualization.PieChart(document.getElementById('pie_chart'));
+      chart.draw(data, options);
+    }
+
+    function drawColumnChart() {
+      var data = google.visualization.arrayToDataTable([
+        ['City', 'Population (millions)'],
+        ['Mumbai', 20],
+        ['Delhi', 18],
+        ['Bangalore', 12],
+        ['Kolkata', 15],
+        ['Chennai', 11]
+      ]);
+
+      var options = {
+        title: 'City Population',
+        hAxis: { title: 'City' },
+        vAxis: { title: 'Population (millions)' },
+        legend: { position: 'none' },
+        chartArea: { left: 60, top: 40, width: '80%', height: '70%' }
+      };
+
+      var chart = new google.visualization.ColumnChart(document.getElementById('bar_chart'));
+      chart.draw(data, options);
+    }
+
+    window.addEventListener('resize', drawAll);
+  </script>
+</head>
+<body>
+  <h1>Google Charts: Line, Pie, and Column</h1>
+  <div class="chart-row">
+    <div class="chart-container">
+      <div class="chart-box" id="line_chart" role="img" aria-label="Line chart"></div>
+    </div>
+    <div class="chart-container">
+      <div class="chart-box" id="pie_chart" role="img" aria-label="Pie chart"></div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;">
+    <div class="chart-box" id="bar_chart" style="height:420px;" role="img" aria-label="Column chart"></div>
+  </div>
+</body>
+</html>
