@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Google Charts Dashboard</title>
+    <!-- Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        /* Chart container styling */
+        .chart-card {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            /* Min height for containers that hold standard charts */
+            min-height: 350px; 
+            display: flex;
+            flex-direction: column;
+        }
+        /* Ensure the chart itself takes up the available space within the card */
+        .chart-container {
+            flex-grow: 1;
+        }
+        
+        /* Specific height override for Gauge container */
+        #gauge_chart {
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Styling for the Google Charts Control Filter (Dropdown) */
+        #filter_div {
+            min-height: 80px;
+            padding: 0.5rem 0;
+        }
+        .google-visualization-table-table {
+            width: 100%;
+        }
+    </style>
+
+    <!-- Load Google Charts API -->
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+        // 1. Load the necessary chart packages, including controls and table for the dashboard
+        google.charts.load('current', {
+            packages: ['corechart', 'gauge', 'controls', 'table']
+        });
+
+        // Set a callback to run when the Google Visualization API is loaded.
+        google.charts.setOnLoadCallback(drawApp);
+
+        // Main entry function to draw all components
+        function drawApp() {
+            // Draw the main interactive dashboard
+            drawDashboard();
+
+            // Draw the independent Gauge chart
+            drawGaugeChart();
+        }
+
+        function drawDashboard() {
+            // --- 1. Master Data Table (Date, Product, Region, Revenue) ---
+            var data = google.visualization.arrayToDataTable([
+                ['Date', 'Product', 'Region', 'Revenue'],
+                [new Date(2025, 0, 1), 'Product X', 'North', 11000],
+                [new Date(2025, 0, 15), 'Product Y', 'South', 2000],
+                [new Date(2025, 1, 1), 'Product X', 'North', 10500],
+                [new Date(2025, 1, 20), 'Service A', 'South', 4200],
+                [new Date(2025, 2, 5), 'Product Z', 'North', 7500],
+                [new Date(2025, 2, 25), 'Service B', 'South', 5100],
+                [new Date(2025, 3, 10), 'Product X', 'North', 11500],
+                [new Date(2025, 3, 30), 'Service A', 'South', 4500],
+                [new Date(2025, 4, 15), 'Product Z', 'North', 7200],
+                [new Date(2025, 5, 1), 'Product Y', 'South', 2500],
+                [new Date(2025, 5, 10), 'Product X', 'North', 12000],
+                [new Date(2025, 5, 20), 'Service B', 'South', 5500]
+            ]);
+
+            // --- 2. Instantiate and draw the dashboard ---
+            var dashboard = new google.visualization.Dashboard(
+                document.getElementById('dashboard_container'));
+
+            // --- 3. Control Wrapper: Category Filter (Dropdown for Product) ---
+            var productFilter = new google.visualization.ControlWrapper({
+                controlType: 'CategoryFilter',
+                containerId: 'filter_div',
+                options: {
+                    filterColumnIndex: 1, // Filter on the 'Product' column
+                    ui: {
+                        caption: 'Filter by Product Type (Select One or More)',
+                        labelStacking: 'vertical',
+                        allowMultiple: true,
+                        allowTyping: false,
+                        selectedValuesLayout: 'belowStacked'
+                    }
+                }
+            });
+
+            // --- 4. Chart Wrapper 1: Pie Chart (Revenue by Region) ---
+            var pieChart = new google.visualization.ChartWrapper({
+                chartType: 'PieChart',
+                containerId: 'pie_chart_div',
+                // Define the view: Group by Region (index 2), sum Revenue (index 3)
+                view: {
+                    columns: [2, { // Column 2 is the grouping key (Region)
+                        sourceColumn: 3, // Column to aggregate (Revenue)
+                        type: "number",
+                        label: "Total Revenue",
+                        aggregation: google.visualization.data.sum // FIX: Use function reference
+                    }]
+                },
+                options: {
+                    title: 'Revenue Distribution by Region (Filtered)',
+                    titleTextStyle: { fontSize: 18, bold: true, color: '#1f2937' },
+                    pieHole: 0.4,
+                    legend: 'labeled',
+                    colors: ['#3b82f6', '#10b981'], // Blue for North, Green for South
+                    chartArea: { left: 20, top: 50, width: '90%', height: '80%' }
+                }
+            });
+
+            // --- 5. Chart Wrapper 2: Column Chart (Revenue by Product) ---
+            var columnChart = new google.visualization.ChartWrapper({
+                chartType: 'ColumnChart',
+                containerId: 'column_chart_div',
+                // Define the view: Group by Product (index 1), sum Revenue (index 3)
+                view: {
+                    columns: [1, { // Column 1 is the grouping key (Product)
+                        sourceColumn: 3, // Column to aggregate (Revenue)
+                        type: "number",
+                        label: "Total Revenue",
+                        aggregation: google.visualization.data.sum // FIX: Use function reference
+                    }]
+                },
+                options: {
+                    title: 'Revenue by Product (Filtered)',
+                    titleTextStyle: { fontSize: 18, bold: true, color: '#1f2937' },
+                    legend: { position: 'none' },
+                    colors: ['#f59e0b'], // Amber
+                    chartArea: { left: 60, top: 50, width: '85%', height: '70%' },
+                    vAxis: { title: 'Revenue ($)', minValue: 0 },
+                    hAxis: { title: 'Product' }
+                }
+            });
+            
+            // --- 6. Chart Wrapper 3: Table Chart (Raw Data View) ---
+            var tableChart = new google.visualization.ChartWrapper({
+                chartType: 'Table',
+                containerId: 'table_chart_div',
+                options: {
+                    title: 'Filtered Transaction Data',
+                    showRowNumber: true,
+                    width: '100%',
+                    height: '100%',
+                    pageSize: 10,
+                    allowHtml: true,
+                    page: 'enable', // Enable pagination
+                    cssClassNames: {
+                        headerRow: 'bg-gray-100 text-gray-700 font-bold text-sm',
+                        tableRow: 'hover:bg-blue-50 transition duration-150',
+                        oddTableRow: 'bg-white',
+                        selectedTableRow: 'bg-blue-200'
+                    }
+                }
+            });
+
+
+            // --- 7. Bind the control to the charts ---
+            // When the filter changes, the data fed to the Pie, Column, and Table charts updates.
+            dashboard.bind(productFilter, [pieChart, columnChart, tableChart]);
+
+            // --- 8. Draw the dashboard ---
+            dashboard.draw(data);
+        }
+
+        // Gauge chart logic remains independent for real-time simulation
+        function drawGaugeChart() {
+            var data = google.visualization.arrayToDataTable([
+                ['Label', 'Value'],
+                ['Target', 75]
+            ]);
+
+            var options = {
+                width: '100%',
+                height: 200,
+                redFrom: 0, redTo: 50,
+                yellowFrom: 50, yellowTo: 75,
+                greenFrom: 75, greenTo: 100,
+                minorTicks: 5
+            };
+
+            var chart = new google.visualization.Gauge(document.getElementById('gauge_chart'));
+
+            chart.draw(data, options);
+
+            // Simulate real-time data update
+            setInterval(function() {
+                // Generate a random value between 60 and 95
+                var newValue = Math.round(60 + (Math.random() * 35)); 
+                data.setValue(0, 1, newValue);
+                chart.draw(data, options);
+                document.getElementById('gauge_value').innerText = newValue + '%';
+            }, 5000); // Update every 5 seconds
+        }
+
+        // Redraw charts on window resize to ensure responsiveness
+        window.addEventListener('resize', drawApp);
+    </script>
+</head>
+<body class="p-4 sm:p-8">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-800 mb-6">Interactive Sales Intelligence Dashboard</h1>
+        <p class="text-gray-600 mb-10">Use the filter below to interact with the regional and product performance charts.</p>
+
+        <!-- Main Dashboard Container -->
+        <div id="dashboard_container">
+            
+            <!-- Filter Row -->
+            <div class="chart-card mb-6 p-4">
+                <div id="filter_div"></div>
+            </div>
+
+            <!-- Upper Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+                <!-- Card 1: Pie Chart (Responsive, takes 1/3) -->
+                <div class="lg:col-span-1 chart-card">
+                    <div id="pie_chart_div" class="chart-container"></div>
+                </div>
+
+                <!-- Card 2: Gauge Chart (Independent, takes 1/3) -->
+                <div class="lg:col-span-1 chart-card h-80 flex flex-col items-center justify-center">
+                    <h2 class="text-lg font-semibold text-gray-700 mb-4">Daily Target Completion (Real-time Simulation)</h2>
+                    <div id="gauge_chart" class="w-full"></div>
+                    <div class="mt-4 text-3xl font-bold text-gray-800">
+                        <span id="gauge_value">75%</span>
+                    </div>
+                </div>
+
+                <!-- Card 3: Column Chart (Responsive, takes 1/3) -->
+                <div class="lg:col-span-1 chart-card">
+                    <div id="column_chart_div" class="chart-container"></div>
+                </div>
+            </div>
+
+            <!-- Lower Table Row -->
+            <div class="chart-card h-auto min-h-96">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Filtered Transaction Details</h2>
+                <div id="table_chart_div" class="chart-container"></div>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>

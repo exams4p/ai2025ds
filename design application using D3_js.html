@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exclusive Tectonic Plate Dashboard</title>
+    <!-- Load Tailwind CSS for modern, dark-themed styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load D3.js library for visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* Custom styles for the SVG elements and Dashboard aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate-900 */
+        }
+        .chart-panel {
+            background-color: #1e293b; /* Slate-800 */
+            color: #e2e8f0; /* Light text */
+        }
+        .axis path,
+        .axis line {
+            stroke: #475569; /* Slate-600 */
+            shape-rendering: crispEdges;
+        }
+        .axis text {
+            fill: #94a3b8; /* Slate-400 */
+            font-size: 0.85rem;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(30, 41, 59, 0.98); /* Dark background, more opaque */
+            border: 2px solid #06b6d4; /* Cyan border */
+            color: #e2e8f0;
+            padding: 12px 18px;
+            border-radius: 10px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            font-size: 0.9rem;
+            z-index: 100;
+        }
+        .bar-label {
+            fill: #fde047; /* Yellow */
+            font-weight: bold;
+        }
+        /* Tailwind custom spinner (for API loading) */
+        .spinner {
+            border-top-color: #06b6d4;
+            border-left-color: #06b6d4;
+            border-bottom-color: transparent;
+            border-right-color: transparent;
+            border-width: 3px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="p-2 sm:p-6 min-h-screen">
+
+    <div class="w-full max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-cyan-400 mb-2 tracking-tight">
+                Global Tectonic Dynamics Dashboard
+            </h1>
+            <p class="text-slate-400 text-xl">
+                Real-time Analysis of Plate Metrics and Seismic Activity
+            </p>
+        </header>
+
+        <!-- Summary "Flash Cards" -->
+        <div id="summary-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <!-- Cards will be populated here -->
+        </div>
+
+        <!-- Control Panel -->
+        <div class="chart-panel rounded-xl p-4 mb-6 shadow-xl flex flex-col sm:flex-row gap-4">
+            <input type="text" id="search-input" placeholder="Filter by Plate Name (e.g., Pacific)" 
+                   class="flex-grow p-3 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-cyan-500 focus:border-cyan-500 transition duration-150"
+                   oninput="updateDashboard()">
+            
+            <select id="type-filter" 
+                    class="p-3 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-cyan-500 focus:border-cyan-500 transition duration-150 w-full sm:w-auto"
+                    onchange="updateDashboard()">
+                <option value="All">Boundary Type: All</option>
+                <option value="Continental">Continental</option>
+                <option value="Oceanic">Oceanic</option>
+            </select>
+        </div>
+        
+        <!-- Dashboard Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Panel 1: Scatter Plot (Area vs Rate) -->
+            <div class="lg:col-span-2 chart-panel rounded-xl shadow-2xl p-6 h-[550px]">
+                <h2 class="text-xl font-semibold mb-4 text-cyan-300">Plate Area vs. Movement Rate</h2>
+                <div id="scatter-plot" class="w-full h-[450px]"></div>
+            </div>
+
+            <!-- Panel 2: Bar Chart (Count by Type) -->
+            <div class="lg:col-span-1 chart-panel rounded-xl shadow-2xl p-6 h-[550px]">
+                <h2 class="text-xl font-semibold mb-4 text-cyan-300">Plate Count by Type</h2>
+                <div id="bar-chart" class="w-full h-[450px]"></div>
+            </div>
+
+            <!-- Panel 3: Line Chart (Simulated Historical Data) -->
+            <div class="lg:col-span-3 chart-panel rounded-xl shadow-2xl p-6 lg:h-[550px]">
+                 <h2 class="text-xl font-semibold mb-4 text-cyan-300">Simulated Historical Max Quake Magnitude</h2>
+                <div id="line-chart" class="w-full h-[450px]"></div>
+            </div>
+
+            <!-- Panel 4: Gemini API Analysis (New Panel with Structured Data) -->
+            <div class="lg:col-span-3 chart-panel rounded-xl shadow-2xl p-6">
+                 <h2 class="text-xl font-semibold mb-4 text-yellow-400">Expert Data Analysis (Powered by Gemini)</h2>
+                <button onclick="triggerAnalysis()" id="analysis-button" class="px-6 py-2 bg-cyan-600 text-white font-bold rounded-lg shadow-md hover:bg-cyan-500 transition duration-200 disabled:opacity-50">
+                    Analyze Current Filtered Data
+                </button>
+                <div id="analysis-output" class="mt-4 p-4 bg-slate-700 rounded-lg text-slate-200 min-h-[100px] border-l-4 border-yellow-400">
+                    Click "Analyze Current Filtered Data" to generate a geological summary and **dynamic charts** of the plates currently displayed in the dashboard.
+                </div>
+            </div>
+            
+        </div>
+
+        <div id="tooltip" class="tooltip"></div>
+
+        <footer class="text-center mt-8 text-xs text-slate-600">
+        </footer>
+    </div>
+
+    <script>
+        // --- DATA ---
+        const plateData = [
+            { name: "Pacific Plate", area_mil_sqkm: 103, rate_cm_yr: 8.5, max_quake: 9.5, type: "Oceanic", temp_index: 3200 },
+            { name: "North American Plate", area_mil_sqkm: 76, rate_cm_yr: 2.3, max_quake: 7.9, type: "Continental", temp_index: 1500 },
+            { name: "Eurasian Plate", area_mil_sqkm: 67, rate_cm_yr: 1.5, max_quake: 8.1, type: "Continental", temp_index: 1200 },
+            { name: "African Plate", area_mil_sqkm: 61, rate_cm_yr: 2.5, max_quake: 7.4, type: "Continental", temp_index: 1300 },
+            { name: "Antarctic Plate", area_mil_sqkm: 60, rate_cm_yr: 1.0, max_quake: 6.8, type: "Continental", temp_index: 1100 },
+            { name: "Australian Plate", area_mil_sqkm: 47, rate_cm_yr: 6.0, max_quake: 8.6, type: "Oceanic", temp_index: 2500 },
+            { name: "South American Plate", area_mil_sqkm: 43, rate_cm_yr: 1.8, max_quake: 8.8, type: "Continental", temp_index: 1000 },
+            { name: "Nazca Plate", area_mil_sqkm: 15.6, rate_cm_yr: 7.9, max_quake: 8.5, type: "Oceanic", temp_index: 2900 },
+            { name: "Cocos Plate", area_mil_sqkm: 2.9, rate_cm_yr: 5.5, max_quake: 7.0, type: "Oceanic", temp_index: 2100 },
+            { name: "Philippine Sea Plate", area_mil_sqkm: 5.5, rate_cm_yr: 4.0, max_quake: 7.5, type: "Oceanic", temp_index: 1800 },
+            { name: "Arabian Plate", area_mil_sqkm: 5.0, rate_cm_yr: 3.5, max_quake: 6.5, type: "Continental", temp_index: 1600 },
+            { name: "Caribbean Plate", area_mil_sqkm: 3.2, rate_cm_yr: 2.0, max_quake: 7.2, type: "Oceanic", temp_index: 1400 },
+            { name: "Juan de Fuca Plate", area_mil_sqkm: 0.2, rate_cm_yr: 4.5, max_quake: 6.0, type: "Oceanic", temp_index: 1900 },
+        ];
+
+        const historicalQuakeData = [
+            { year: 1950, magnitude: 7.5 }, { year: 1960, magnitude: 8.2 }, 
+            { year: 1970, magnitude: 7.0 }, { year: 1980, magnitude: 7.8 }, 
+            { year: 1990, magnitude: 7.2 }, { year: 2000, magnitude: 8.0 },
+            { year: 2010, magnitude: 8.8 }, { year: 2020, magnitude: 7.5 },
+        ];
+
+        // Global State and D3 selections
+        const tooltip = d3.select("#tooltip");
+        const colorScale = d3.scaleOrdinal()
+            .domain(["Continental", "Oceanic"])
+            .range(["#fde047", "#06b6d4"]); 
+            
+        let liveQuakeMagnitude = "N/A";
+        let isQuakeLoading = true;
+        let lastAnalysisData = null; // Store last analysis data for resize
+
+        // --- API UTILITIES (Exponential Backoff) ---
+        async function fetchWithRetry(url, options, maxRetries = 3) {
+            let attempt = 0;
+            while (attempt < maxRetries) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                         // Check for rate limiting or temporary server issues
+                        if (response.status === 429 || response.status >= 500) {
+                            throw new Error(`Server error or rate limited: ${response.status}`);
+                        }
+                    }
+                    return response;
+                } catch (error) {
+                    attempt++;
+                    if (attempt >= maxRetries) {
+                        console.error("API call failed after multiple retries:", error);
+                        throw error;
+                    }
+                    const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        // --- GEMINI API (ANALYSIS) ---
+        async function getGeminiAnalysis(data) {
+            const outputElement = document.getElementById('analysis-output');
+            const button = document.getElementById('analysis-button');
+            const filteredDataString = JSON.stringify(data.map(d => ({ 
+                name: d.name, 
+                area_mil_sqkm: d.area_mil_sqkm, 
+                rate_cm_yr: d.rate_cm_yr, 
+                type: d.type 
+            })));
+
+            button.disabled = true;
+            outputElement.innerHTML = `<div class="flex items-center justify-center py-6 text-cyan-400">
+                <div class="spinner border-4 rounded-full w-8 h-8 mr-3"></div>
+                Analyzing ${data.length} plate(s) with advanced geological modeling...
+            </div>`;
+
+            try {
+                // 1. Define the system prompt and user query
+                const plateNames = data.map(d => d.name).join(', ');
+                const userQuery = `Analyze the geological data for the following tectonic plates: ${plateNames}. Based on the full dataset provided: ${filteredDataString}, please provide a summary, calculate key statistics, and identify the top 3 plates by movement rate.`;
+                
+                const systemPrompt = "You are a geological data expert. Your task is to analyze the provided data about tectonic plates. Generate a concise, single-paragraph summary explaining the key correlation (or lack thereof) between movement rate and area for the displayed plates, highlight the most active plate based on rate, and generate a list of the top 3 fastest plates for charting purposes, and calculate min/max stats. Respond ONLY with a valid JSON object matching the provided schema. Do not add any introductory or concluding text outside the JSON structure.";
+
+                // 2. Define the JSON schema for structured output
+                const responseSchema = {
+                    type: "OBJECT",
+                    properties: {
+                        summary: { type: "STRING", description: "A single, concise paragraph of geological analysis." },
+                        keyStats: {
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    metric: { type: "STRING" },
+                                    value: { type: "STRING" },
+                                    plate: { type: "STRING", description: "The plate associated with the value, if applicable." }
+                                },
+                                required: ["metric", "value"]
+                            }
+                        },
+                        topPlatesData: {
+                            type: "ARRAY",
+                            description: "The top 3 fastest plates by rate_cm_yr, sorted high to low.",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    name: { type: "STRING" },
+                                    rate: { type: "NUMBER" }
+                                },
+                                required: ["name", "rate"]
+                            }
+                        }
+                    },
+                    required: ["summary", "keyStats", "topPlatesData"]
+                };
+                
+                // 3. Construct the full payload with generationConfig
+                const apiKey = "AIzaSyB-VsYZUtyYux08uMDGV9AmiPX2sOHjq8Y";   //it will be auto deleted after 7 days only for Partical exam pluorpose if you don't want traffic or any end min changes change this key with Yours 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: responseSchema
+                    }
+                };
+
+                // 4. Fetch and process the response
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                let analysisData;
+                try {
+                    const jsonString = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    analysisData = JSON.parse(jsonString);
+                    lastAnalysisData = analysisData; // Store successful data
+                } catch (parseError) {
+                    console.error("Failed to parse JSON response:", parseError);
+                    throw new Error("Analysis failed: Could not interpret the structured data.");
+                }
+
+                // 5. Render the structured analysis
+                renderStructuredAnalysis(analysisData);
+
+            } catch (e) {
+                console.error("Gemini API Error:", e);
+                outputElement.innerHTML = `<p class="text-red-400 p-4">Error fetching analysis: ${e.message || "An unknown error occurred."} Please try again later. (Check console for details)</p>`;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function triggerAnalysis() {
+            const searchTerms = document.getElementById('search-input').value.toLowerCase();
+            const typeFilter = document.getElementById('type-filter').value;
+            
+            let filteredData = plateData.filter(d => {
+                const matchesName = d.name.toLowerCase().includes(searchTerms);
+                const matchesType = typeFilter === "All" || d.type === typeFilter;
+                return matchesName && matchesType;
+            });
+            
+            if (filteredData.length === 0) {
+                 const outputElement = document.getElementById('analysis-output');
+                 outputElement.innerHTML = `<p class="text-orange-400 p-4">No plates match the current filter. Please adjust your criteria before running the analysis.</p>`;
+                 return;
+            }
+            
+            getGeminiAnalysis(filteredData);
+        }
+
+        // --- DRAW ANIMATED BAR CHART FOR ANALYSIS PANEL ---
+        function drawAnalysisBarChart(data) {
+            const container = d3.select("#analysis-chart-container");
+            if (!container.node()) return; // Exit if container doesn't exist yet
+
+            const containerWidth = container.node().clientWidth;
+            const containerHeight = 220; 
+            
+            const margin = { top: 10, right: 10, bottom: 60, left: 50 };
+            const width = containerWidth - margin.left - margin.right;
+            const height = containerHeight - margin.top - margin.bottom;
+
+            container.selectAll("svg").remove();
+
+            if (data.length === 0) {
+                 container.html('<p class="text-slate-400 text-center py-8">No data available for analysis chart.</p>');
+                 return;
+            }
+
+            const svg = container.append("svg")
+                .attr("width", containerWidth)
+                .attr("height", containerHeight)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // Define Scales
+            const xScale = d3.scaleBand().domain(data.map(d => d.name)).range([0, width]).padding(0.4);
+            const yScale = d3.scaleLinear().domain([0, d3.max(plateData, d => d.rate_cm_yr) * 1.1]).range([height, 0]); // Use global max for scale consistency
+
+            // Draw Axes
+            svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(xScale))
+                .selectAll("text")
+                .attr("transform", "rotate(-15)")
+                .style("text-anchor", "end");
+            svg.append("g").attr("class", "axis").call(d3.axisLeft(yScale).ticks(3));
+
+            // Y-Axis Label
+            svg.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("y", 0 - margin.left + 5).attr("x", 0 - (height / 2)).style("text-anchor", "middle").style("fill", "#94a3b8").text("Rate (cm/yr)");
+
+
+            // Draw Bars with Animation
+            svg.selectAll(".analysis-bar")
+                .data(data)
+                .enter().append("rect")
+                .attr("class", "analysis-bar")
+                .attr("x", d => xScale(d.name))
+                .attr("width", xScale.bandwidth())
+                .attr("fill", "#fde047") 
+                .attr("y", height) 
+                .attr("height", 0) 
+                .transition()
+                .duration(700)
+                .delay((d, i) => i * 150)
+                .attr("y", d => yScale(d.rate))
+                .attr("height", d => height - yScale(d.rate))
+                .attr("stroke", "#0f172a")
+                .attr("stroke-width", 1)
+                .attr("rx", 4); 
+
+            // Add Labels to Bars
+            svg.selectAll(".rate-label")
+                .data(data)
+                .enter().append("text")
+                .attr("class", "rate-label")
+                .attr("x", d => xScale(d.name) + xScale.bandwidth() / 2)
+                .attr("y", d => yScale(d.rate))
+                .attr("text-anchor", "middle")
+                .style("fill", "#fde047")
+                .style("font-size", "14px")
+                .style("opacity", 0)
+                .text(d => d3.format(".1f")(d.rate))
+                .transition()
+                .duration(700)
+                .delay((d, i) => i * 150 + 700) // Delay after bars are drawn
+                .style("opacity", 1)
+                .attr("y", d => yScale(d.rate) - 5);
+        }
+
+        // --- RENDER STRUCTURED ANALYSIS ---
+        function renderStructuredAnalysis(analysisData) {
+            const outputElement = document.getElementById('analysis-output');
+            
+            // Generate Key Stats HTML
+            const statsHtml = analysisData.keyStats.map(stat => `
+                <div class="p-3 bg-slate-800 rounded-xl shadow-md border-l-4 border-cyan-400">
+                    <p class="text-sm text-slate-400 uppercase tracking-wider">${stat.metric}</p>
+                    <p class="text-2xl font-extrabold text-white mt-1">${stat.value}</p>
+                    ${stat.plate ? `<p class="text-xs text-slate-500 truncate mt-1">(${stat.plate})</p>` : ''}
+                </div>
+            `).join('');
+
+            // Combine all elements into the output panel
+            outputElement.innerHTML = `
+                <div class="mb-6 p-4 bg-slate-700 rounded-xl border-l-4 border-yellow-400 shadow-inner">
+                    <p class="text-slate-200 text-base italic leading-relaxed">${analysisData.summary}</p>
+                </div>
+                
+                <h3 class="text-lg font-semibold text-cyan-300 mb-3 border-b border-slate-700 pb-2">Key Statistical Metrics (Filtered):</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                    ${statsHtml}
+                </div>
+
+                <h3 class="text-lg font-semibold text-cyan-300 mb-3 border-b border-slate-700 pb-2">Top 3 Fastest Plates (Dynamic Bar Chart):</h3>
+                <div id="analysis-chart-container" class="w-full h-auto bg-slate-900 rounded-xl p-2 shadow-2xl">
+                    <!-- Dynamic chart will be drawn here -->
+                </div>
+            `;
+            
+            // Draw the new animated chart
+            drawAnalysisBarChart(analysisData.topPlatesData);
+            
+            // Add a dedicated resize listener for this chart, removing any previous one
+            window.removeEventListener('resize', resizeAnalysisChart);
+            window.addEventListener('resize', resizeAnalysisChart);
+        }
+
+        // Dedicated resize function for the analysis chart
+        function resizeAnalysisChart() {
+            if (lastAnalysisData && lastAnalysisData.topPlatesData) {
+                drawAnalysisBarChart(lastAnalysisData.topPlatesData);
+            }
+        }
+
+
+        // --- GOOGLE SEARCH API (LIVE DATA) ---
+        async function fetchLiveData() {
+            isQuakeLoading = true;
+            updateSummaryCards(getCurrentFilteredData()); // Update to show loading state
+
+            try {
+                const userQuery = "What is the largest earthquake magnitude recorded globally in the last 24 hours according to USGS or reliable news source?";
+                const apiKey = "28122e76a070fe0d359a769641b933a79c89eea0b9fd8475e41b9e2c3ee45188"; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    tools: [{ "google_search": {} }], // Enable Google Search grounding
+                    systemInstruction: { parts: [{ text: "Respond only with the detected magnitude (e.g., '6.8') or 'N/A' if no significant event is reported. Do not add any extra text or context." }] },
+                };
+
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                const match = text ? text.match(/(\d+\.?\d*)/) : null;
+                liveQuakeMagnitude = match ? d3.format(".1f")(parseFloat(match[0])) : "N/A";
+            
+            } catch (e) {
+                console.error("Live Data Fetch Error:", e);
+                liveQuakeMagnitude = "ERROR";
+            } finally {
+                isQuakeLoading = false;
+                updateSummaryCards(getCurrentFilteredData());
+            }
+        }
+
+        // --- DASHBOARD COMPONENTS ---
+
+        function getCurrentFilteredData() {
+            const searchTerms = document.getElementById('search-input').value.toLowerCase();
+            const typeFilter = document.getElementById('type-filter').value;
+            
+            return plateData.filter(d => {
+                const matchesName = d.name.toLowerCase().includes(searchTerms);
+                const matchesType = typeFilter === "All" || d.type === typeFilter;
+                return matchesName && matchesType;
+            });
+        }
+
+        function updateSummaryCards(data) {
+            const totalPlates = data.length;
+            const avgRate = totalPlates > 0 ? d3.mean(data, d => d.rate_cm_yr) : 0;
+            const maxAreaPlate = d3.max(data, d => d.area_mil_sqkm);
+
+            const cardData = [
+                { title: "Total Plates (Filtered)", value: totalPlates, unit: "PLATES", icon: "M17.5 16H22M2.5 16H6.5M12 21V11M12 11L17.5 6M12 11L6.5 6M12 6L17.5 1M6.5 1L12 6" },
+                { title: "Average Rate (Filtered)", value: d3.format(".2f")(avgRate), unit: "cm/yr", icon: "M10 20L15 15L20 20M4 10H20M15 15L10 10L15 5" },
+                { title: "Largest Plate Area (Filtered)", value: d3.format(",.0f")(maxAreaPlate || 0), unit: "M sq km", icon: "M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.58 20 4 16.42 4 12C4 7.58 7.58 4 12 4C16.42 4 20 7.58 20 12C20 16.42 16.42 20 12 20Z" },
+                { 
+                    title: "Live Max Quake (24h)", 
+                    value: isQuakeLoading ? `<div class="spinner border-4 rounded-full w-6 h-6"></div>` : liveQuakeMagnitude, 
+                    unit: isQuakeLoading ? "FETCHING DATA" : "MAGNITUDE", 
+                    icon: "M12 2L15 6L18 2L21 6L24 2V22L20 18L17 22L14 18L11 22L8 18L5 22L1 18V2L4 6L7 2L10 6L13 2Z",
+                    color: isQuakeLoading || liveQuakeMagnitude === "ERROR" ? "text-slate-500" : "text-red-400"
+                }
+            ];
+
+            const cardsContainer = d3.select("#summary-cards");
+            cardsContainer.selectAll(".card").remove();
+
+            cardData.forEach(d => {
+                cardsContainer.append("div")
+                    .attr("class", `card chart-panel rounded-xl p-5 shadow-lg border-b-4 border-cyan-500 hover:border-yellow-400 transition duration-300`)
+                    .html(`
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-medium text-slate-300 uppercase">${d.title}</h3>
+                            <svg class="w-6 h-6 ${d.color || 'text-cyan-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="${d.icon}"/>
+                            </svg>
+                        </div>
+                        <p class="text-3xl font-bold mt-2 text-white">${d.value}</p>
+                        <p class="text-xs text-slate-500 uppercase mt-1">${d.unit}</p>
+                    `);
+            });
+        }
+        
+        // --- CHART UTILITY (for responsiveness) ---
+        const getDimensions = (elementId) => {
+            const container = d3.select(`#${elementId}`);
+            if (!container.node()) return null;
+
+            const containerWidth = container.node().clientWidth;
+            const containerHeight = container.node().clientHeight;
+            const margin = { top: 20, right: 30, bottom: 60, left: (elementId === 'scatter-plot' ? 70 : 60) };
+            
+            const width = containerWidth - margin.left - margin.right;
+            const height = containerHeight - margin.top - margin.bottom;
+
+            return { margin, width, height, containerWidth, containerHeight, container };
+        };
+
+        // --- SCATTER PLOT LOGIC (Area vs. Rate) ---
+        function drawScatterPlot(data) {
+            const dims = getDimensions('scatter-plot');
+            if (!dims) return;
+            const { margin, width, height, container } = dims;
+
+            container.selectAll("svg").remove();
+            
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // Define Scales
+            const xScale = d3.scaleLinear().domain([0, d3.max(plateData, d => d.rate_cm_yr) * 1.1]).range([0, width]);
+            const yScale = d3.scaleLinear().domain([0, d3.max(plateData, d => d.area_mil_sqkm) * 1.05]).range([height, 0]);
+            const rScale = d3.scaleSqrt().domain([d3.min(plateData, d => d.temp_index), d3.max(plateData, d => d.temp_index)]).range([5, 20]); 
+
+            // Draw Axes
+            svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(xScale).ticks(5));
+            svg.append("g").attr("class", "axis").call(d3.axisLeft(yScale).ticks(5));
+
+            // X-Axis Label
+            svg.append("text").attr("class", "axis-label").attr("transform", `translate(${width / 2}, ${height + 40})`).style("text-anchor", "middle").style("fill", "#94a3b8").text("Movement Rate (cm/year)");
+            // Y-Axis Label
+            svg.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("y", 0 - margin.left + 10).attr("x", 0 - (height / 2)).style("text-anchor", "middle").style("fill", "#94a3b8").text("Area (Million sq km)");
+
+            // Draw Bubbles (Circles)
+            svg.selectAll(".plate-circle")
+                .data(data, d => d.name)
+                .join(
+                    enter => enter.append("circle")
+                        .attr("class", "plate-circle cursor-pointer")
+                        .attr("cx", d => xScale(d.rate_cm_yr))
+                        .attr("cy", d => yScale(d.area_mil_sqkm))
+                        .attr("fill", d => colorScale(d.type))
+                        .attr("stroke", "#0f172a")
+                        .attr("stroke-width", 2)
+                        .attr("opacity", 0.8)
+                        .attr("r", 0) 
+                        .call(enter => enter.transition().duration(800).attr("r", d => rScale(d.temp_index))),
+                    
+                    update => update.transition().duration(800)
+                        .attr("cx", d => xScale(d.rate_cm_yr))
+                        .attr("cy", d => yScale(d.area_mil_sqkm))
+                        .attr("r", d => rScale(d.temp_index))
+                        .attr("fill", d => colorScale(d.type)),
+                        
+                    exit => exit.transition().duration(500).attr("r", 0).remove()
+                )
+                .on("mouseover", (event, d) => {
+                    d3.select(event.currentTarget).attr("opacity", 1.0).attr("stroke", "#f8fafc"); 
+                    tooltip.transition().duration(100).style("opacity", 1);
+                    tooltip.html(`
+                        <span class="text-lg font-bold text-cyan-400">${d.name}</span><br>
+                        <hr class="border-slate-700 my-1">
+                        Area: <span class="font-semibold text-white">${d3.format(",.0f")(d.area_mil_sqkm)}M sq km</span><br>
+                        Rate: <span class="font-semibold text-white">${d3.format(".1f")(d.rate_cm_yr)} cm/yr</span><br>
+                        Max Quake (Sim.): <span class="font-semibold text-white">${d.max_quake}</span><br>
+                        Type: <span class="font-semibold text-white">${d.type}</span>
+                    `)
+                    .style("left", (event.pageX + 15) + "px")
+                    .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mousemove", (event) => {
+                    tooltip.style("left", (event.pageX + 15) + "px")
+                           .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", (event, d) => {
+                    d3.select(event.currentTarget).attr("opacity", 0.9).attr("stroke", "#0f172a");
+                    tooltip.transition().duration(300).style("opacity", 0);
+                });
+        }
+        
+        // --- BAR CHART LOGIC (Count by Type) ---
+        function drawBarChart(data) {
+            const dims = getDimensions('bar-chart');
+            if (!dims) return;
+            const { margin, width, height, container } = dims;
+
+            container.selectAll("svg").remove();
+
+            const typeCounts = d3.rollups(data, v => v.length, d => d.type)
+                .map(([key, count]) => ({ type: key, count: count }));
+
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Define Scales
+            const xScale = d3.scaleBand().domain(typeCounts.map(d => d.type)).range([0, width]).padding(0.3);
+            const yScale = d3.scaleLinear().domain([0, d3.max(plateData, d => d.type === 'Oceanic' ? 7 : 7) + 1]).range([height, 0]); // Use full data max for consistent scale
+
+            // Draw Axes
+            svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(xScale));
+            svg.append("g").attr("class", "axis").call(d3.axisLeft(yScale).ticks(d3.max(plateData, d => d.type === 'Oceanic' ? 7 : 7) + 1));
+                
+            // Y-Axis Label
+            svg.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("y", 0 - margin.left + 10).attr("x", 0 - (height / 2)).style("text-anchor", "middle").style("fill", "#94a3b8").text("Number of Plates");
+
+            // Draw Bars
+            svg.selectAll(".bar")
+                .data(typeCounts, d => d.type)
+                .join(
+                    enter => enter.append("rect")
+                        .attr("class", "bar cursor-pointer")
+                        .attr("x", d => xScale(d.type))
+                        .attr("y", height) 
+                        .attr("width", xScale.bandwidth())
+                        .attr("fill", d => colorScale(d.type))
+                        .attr("opacity", 0.9)
+                        .call(enter => enter.transition().duration(600).attr("y", d => yScale(d.count)).attr("height", d => height - yScale(d.count))),
+                    
+                    update => update.transition().duration(600)
+                        .attr("y", d => yScale(d.count))
+                        .attr("height", d => height - yScale(d.count))
+                        .attr("fill", d => colorScale(d.type)),
+                        
+                    exit => exit.transition().duration(500).attr("height", 0).attr("y", height).remove()
+                )
+                // Add Bar Labels (Total Count)
+                .each(function(d) {
+                    d3.select(this.parentNode).selectAll(".bar-label-" + d.type.replace(/\s/g, '-'))
+                        .data([d])
+                        .join(
+                            enter => enter.append("text")
+                                .attr("class", `bar-label bar-label-${d.type.replace(/\s/g, '-')}`)
+                                .attr("x", xScale(d.type) + xScale.bandwidth() / 2)
+                                .attr("y", height)
+                                .attr("text-anchor", "middle")
+                                .style("font-size", "14px")
+                                .text(d.count)
+                                .call(enter => enter.transition().duration(600).attr("y", yScale(d.count) - 5)),
+                            
+                            update => update.transition().duration(600)
+                                .attr("x", xScale(d.type) + xScale.bandwidth() / 2)
+                                .attr("y", yScale(d.count) - 5)
+                                .text(d.count),
+                                
+                            exit => exit.transition().duration(500).attr("y", height).remove()
+                        );
+                });
+        }
+        
+        // --- LINE CHART LOGIC (Historical Quake Data) ---
+        function drawLineChart() {
+            const data = historicalQuakeData; 
+            const dims = getDimensions('line-chart');
+            if (!dims) return;
+            const { margin, width, height, container } = dims;
+
+            container.selectAll("svg").remove();
+
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // Define Scales
+            const xScale = d3.scaleLinear().domain(d3.extent(data, d => d.year)).range([0, width]);
+            const yScale = d3.scaleLinear().domain([6.0, 10.0]).range([height, 0]);
+
+            // Draw Axes
+            svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(xScale).ticks(8, "d"));
+            svg.append("g").attr("class", "axis").call(d3.axisLeft(yScale).ticks(5));
+            
+            // X-Axis Label
+            svg.append("text").attr("class", "axis-label").attr("transform", `translate(${width / 2}, ${height + 40})`).style("text-anchor", "middle").style("fill", "#94a3b8").text("Year");
+            // Y-Axis Label
+            svg.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("y", 0 - margin.left + 10).attr("x", 0 - (height / 2)).style("text-anchor", "middle").style("fill", "#94a3b8").text("Max Magnitude (Richter)");
+
+
+            // Define the line generator
+            const line = d3.line()
+                .x(d => xScale(d.year))
+                .y(d => yScale(d.magnitude))
+                .curve(d3.curveMonotoneX); 
+
+            // Draw the line path (with animation)
+            const path = svg.append("path")
+                .datum(data)
+                .attr("fill", "none")
+                .attr("stroke", "#ef4444") 
+                .attr("stroke-width", 3)
+                .attr("d", line)
+                .style("filter", "drop-shadow(0 0 5px rgba(239, 68, 68, 0.7))");
+
+            // Animation for the path drawing
+            const totalLength = path.node().getTotalLength();
+            path.attr("stroke-dasharray", totalLength + " " + totalLength)
+                .attr("stroke-dashoffset", totalLength)
+                .transition()
+                .duration(2000)
+                .ease(d3.easeLinear)
+                .attr("stroke-dashoffset", 0);
+
+            // Draw the data points (circles)
+            svg.selectAll(".dot")
+                .data(data)
+                .enter().append("circle")
+                .attr("class", "dot cursor-pointer")
+                .attr("cx", d => xScale(d.year))
+                .attr("cy", d => yScale(d.magnitude))
+                .attr("r", 0) // Start small for animation
+                .attr("fill", "#f8fafc")
+                .attr("stroke", "#ef4444")
+                .attr("stroke-width", 2)
+                .transition()
+                .delay((d, i) => 1500 + i * 150) // Delay after line draws
+                .duration(500)
+                .attr("r", 6)
+                .on("end", function() {
+                    // Re-add interactivity after animation ends
+                    d3.select(this).on("mouseover", (event, d) => {
+                        d3.select(event.currentTarget).attr("r", 8);
+                        tooltip.transition().duration(100).style("opacity", 1);
+                        tooltip.html(`
+                            <span class="text-lg font-bold text-red-400">Event in ${d.year}</span><br>
+                            Magnitude: <span class="font-semibold text-white">${d.magnitude}</span>
+                        `)
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                    })
+                    .on("mousemove", (event) => {
+                        tooltip.style("left", (event.pageX + 15) + "px")
+                               .style("top", (event.pageY - 20) + "px");
+                    })
+                    .on("mouseout", (event) => {
+                        d3.select(event.currentTarget).attr("r", 6);
+                        tooltip.transition().duration(300).style("opacity", 0);
+                    });
+                });
+        }
+
+
+        // --- MAIN DASHBOARD UPDATE FUNCTION ---
+        function updateDashboard() {
+            const filteredData = getCurrentFilteredData();
+
+            // 1. Update all components
+            updateSummaryCards(filteredData);
+            drawScatterPlot(filteredData);
+            drawBarChart(filteredData);
+            
+            // 2. Line chart is only drawn once (static history)
+            drawLineChart(); 
+        }
+
+        // Initial setup and load
+        updateDashboard();
+        fetchLiveData(); // Fetch real-time data on load
+        window.addEventListener('resize', updateDashboard);
+    </script>
+</body>
+</html>
